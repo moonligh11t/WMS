@@ -41,7 +41,7 @@ class Config:
     # Web 服务配置（可通过环境变量覆盖）
     SECRET_KEY = os.urandom(24).hex()
     URL_PREFIX = os.environ.get("WMS_URL_PREFIX", "")  # 如 /wms
-    PORT = int(os.environ.get("WMS_PORT", 80))
+    PORT = int(os.environ.get("WMS_PORT", 443))
     HOST = os.environ.get("WMS_HOST", "0.0.0.0")
     DEBUG = os.environ.get("WMS_DEBUG", "").lower() in ("1", "true", "yes")
 
