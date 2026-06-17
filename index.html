@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WMS 质检报告匹配工具</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+.header { background: linear-gradient(135deg, #1a73e8, #0d47a1); color: #fff; padding: 20px 30px; }
+.header h1 { font-size: 22px; }
+.header p { font-size: 13px; opacity: .8; margin-top: 4px; }
+.container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+.card { background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.08); padding: 24px; margin-bottom: 16px; }
+.card h2 { font-size: 16px; margin-bottom: 16px; color: #1a73e8; }
+.upload-area { border: 2px dashed #ccc; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; transition: .2s; }
+.upload-area:hover, .upload-area.dragover { border-color: #1a73e8; background: #f0f7ff; }
+.upload-area .icon { font-size: 40px; }
+.upload-area p { color: #666; margin-top: 8px; font-size: 14px; }
+.upload-area .filename { color: #1a73e8; font-weight: bold; margin-top: 8px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 24px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; transition: .2s; }
+.btn-primary { background: #1a73e8; color: #fff; }
+.btn-primary:hover { background: #1557b0; }
+.btn-primary:disabled { background: #93b8f0; cursor: not-allowed; }
+.btn-success { background: #34a853; color: #fff; }
+.btn-success:hover { background: #2d8f47; }
+.btn-danger { background: #ea4335; color: #fff; }
+.btn-danger:hover { background: #c62828; }
+.log-box { background: #1e1e1e; color: #d4d4d4; font-family: Consolas, monospace; font-size: 12px; padding: 12px; border-radius: 6px; height: 250px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
+.results-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.results-table th { background: #f5f7fa; padding: 8px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #e0e0e0; }
+.results-table td { padding: 8px 12px; border-bottom: 1px solid #eee; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.tag-success { background: #e6f4ea; color: #34a853; }
+.tag-fail { background: #fce8e6; color: #ea4335; }
+.stats { display: flex; gap: 20px; margin: 12px 0; font-size: 14px; }
+.stats-item { text-align: center; padding: 10px 20px; background: #f8f9fa; border-radius: 8px; flex: 1; }
+.stats-item .num { font-size: 24px; font-weight: 700; }
+.stats-item .label { color: #666; font-size: 12px; margin-top: 2px; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.hidden { display: none; }
+.progress-bar { height: 4px; background: #e0e0e0; border-radius: 2px; margin: 12px 0; overflow: hidden; }
+.progress-fill { height: 100%; background: #1a73e8; border-radius: 2px; transition: width .3s; width: 0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>📋 WMS 质检报告智能匹配</h1>
+  <p>上传 WMS Excel 文件，自动从简道云匹配并下载质检报告</p>
+</div>
+<div class="container">
+
+  <div class="card">
+    <h2>📂 上传 WMS 文件</h2>
+    <div class="upload-area" id="uploadArea">
+      <div class="icon">📄</div>
+      <p>点击选择或拖拽 WMS Excel 文件到这里</p>
+      <div class="filename" id="fileName"></div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+    <div style="margin-top: 16px;">
+      <button class="btn btn-primary" id="runBtn" disabled onclick="startMatch()">▶ 开始匹配</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="progressCard">
+    <h2>⏳ 运行进度</h2>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="log-box" id="logBox"></div>
+    <div class="stats" id="statsArea">
+      <div class="stats-item"><div class="num" id="statTotal">-</div><div class="label">总计</div></div>
+      <div class="stats-item"><div class="num" id="statSuccess" style="color:#34a853">-</div><div class="label">成功</div></div>
+      <div class="stats-item"><div class="num" id="statFail" style="color:#ea4335">-</div><div class="label">失败</div></div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="resultCard">
+    <h2>📊 匹配结果</h2>
+    <div style="max-height: 300px; overflow-y: auto;">
+      <table class="results-table">
+        <thead><tr><th>产品描述</th><th>匹配文件</th><th>得分</th><th>状态</th></tr></thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="btn btn-success" id="downloadBtn" onclick="downloadResults()">⬇ 下载结果</button>
+      <button class="btn btn-primary" onclick="resetPage()">🔄 重新匹配</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const URL_PREFIX = "{{ url_prefix|default('') }}";
+
+let taskId = null;
+let pollTimer = null;
+
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+
+uploadArea.onclick = () => fileInput.click();
+uploadArea.ondragover = e => { e.preventDefault(); uploadArea.classList.add('dragover'); };
+uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
+uploadArea.ondrop = e => { e.preventDefault(); uploadArea.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); };
+fileInput.onchange = () => handleFile(fileInput.files[0]);
+
+function handleFile(file) {
+  if (!file) return;
+  document.getElementById('fileName').textContent = '✅ ' + file.name;
+  document.getElementById('runBtn').disabled = false;
+  window._uploadedFile = file;
+}
+
+async function startMatch() {
+  const file = window._uploadedFile;
+  if (!file) return;
+
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('progressCard').classList.remove('hidden');
+  document.getElementById('resultCard').classList.add('hidden');
+  document.getElementById('logBox').innerHTML = '';
+  document.getElementById('resultBody').innerHTML = '';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(URL_PREFIX + '/api/run', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) {
+      addLog('❌ ' + data.error);
+      document.getElementById('runBtn').disabled = false;
+      return;
+    }
+    taskId = data.task_id;
+    addLog('✅ 任务已创建，ID: ' + taskId);
+    pollTimer = setInterval(() => pollStatus(), 800);
+  } catch (e) {
+    addLog('❌ 网络错误：无法连接到服务器');
+    document.getElementById('runBtn').disabled = false;
+  }
+}
+
+function addLog(msg) {
+  const box = document.getElementById('logBox');
+  box.innerHTML += '<div>' + msg + '</div>';
+  box.scrollTop = box.scrollHeight;
+}
+
+async function pollStatus() {
+  if (!taskId) return;
+  const res = await fetch(URL_PREFIX + '/api/status/' + taskId);
+  const data = await res.json();
+
+  const logBox = document.getElementById('logBox');
+  if (data.logs) {
+    logBox.innerHTML = data.logs.map(l => `<div>${l}</div>`).join('');
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  document.getElementById('progressFill').style.width = (data.progress || 0) + '%';
+  document.getElementById('statTotal').textContent = data.total || '-';
+  document.getElementById('statSuccess').textContent = data.success || 0;
+  document.getElementById('statFail').textContent = data.fail || 0;
+
+  if (data.results && data.results.length > 0) {
+    const tbody = document.getElementById('resultBody');
+    tbody.innerHTML = data.results.map(r => {
+      const cls = r[3] === '成功' ? 'tag-success' : 'tag-fail';
+      return `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="tag ${cls}">${r[3]}</span></td></tr>`;
+    }).join('');
+  }
+
+  if (data.status === 'done' || data.status === 'error' || data.status === 'expired') {
+    clearInterval(pollTimer);
+    if (data.status === 'expired') {
+      // 旧任务已过期，忽略
+      return;
+    }
+    document.getElementById('resultCard').classList.remove('hidden');
+    document.getElementById('runBtn').disabled = false;
+    if (data.status === 'done') {
+      document.getElementById('progressFill').style.width = '100%';
+      document.getElementById('progressFill').style.background = '#34a853';
+    } else {
+      document.getElementById('progressFill').style.background = '#ea4335';
+    }
+  }
+}
+
+async function downloadResults() {
+  if (!taskId) return;
+  window.open(URL_PREFIX + '/api/download/' + taskId, '_blank');
+}
+
+function resetPage() {
+  clearInterval(pollTimer);
+  taskId = null;
+  document.getElementById('progressCard').classList.add('hidden');
+  document.getElementById('resultCard').classList.add('hidden');
+  document.getElementById('fileName').textContent = '';
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('progressFill').style.width = '0';
+  document.getElementById('progressFill').style.background = '#1a73e8';
+  fileInput.value = '';
+}
+</script>
+</body>
+</html>
